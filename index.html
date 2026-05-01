@@ -1,0 +1,1686 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Antipode Explorer | Find Earth's Opposite Points</title>
+    <meta name="description"
+        content="Interactive 3D globe and 2D map to discover antipodal points - locations on Earth directly opposite to each other.">
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/maplibre-gl@5.0.0/dist/maplibre-gl.js"></script>
+    <link href="https://unpkg.com/maplibre-gl@5.0.0/dist/maplibre-gl.css" rel="stylesheet" />
+    <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
+
+    <style>
+        :root {
+            --primary: #6366f1;
+            --primary-dark: #4f46e5;
+            --secondary: #ec4899;
+            --accent: #06b6d4;
+            --bg-dark: #0f172a;
+            --bg-card: rgba(15, 23, 42, 0.85);
+            --text-light: #f8fafc;
+            --text-muted: #94a3b8;
+            --glass-border: rgba(255, 255, 255, 0.1);
+            --glass-bg: rgba(255, 255, 255, 0.05);
+            --shadow-glow: 0 0 40px rgba(99, 102, 241, 0.3);
+            --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            background: var(--bg-dark);
+            color: var(--text-light);
+            overflow: hidden;
+        }
+
+        /* Main container for split screen */
+        .app-container {
+            width: 100%;
+            height: 100vh;
+            display: flex;
+            position: relative;
+        }
+
+        .map-container {
+            flex: 1;
+            position: relative;
+            transition: var(--transition);
+        }
+
+        .map-container.split {
+            flex: 0.5;
+        }
+
+        #map,
+        #map2 {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        #map2-container {
+            display: none;
+            flex: 0.5;
+            position: relative;
+            border-left: 2px solid var(--primary);
+        }
+
+        #map2-container.active {
+            display: block;
+        }
+
+        .map-label {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: var(--bg-card);
+            backdrop-filter: blur(10px);
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            z-index: 5;
+            border: 1px solid var(--glass-border);
+        }
+
+        .map-label.original {
+            border-left: 3px solid var(--primary);
+        }
+
+        .map-label.antipode {
+            border-left: 3px solid var(--secondary);
+        }
+
+        /* Control Panel */
+        .control-panel {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            z-index: 10;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            max-width: 340px;
+            max-height: calc(100vh - 40px);
+            overflow-y: auto;
+            scrollbar-width: thin;
+            scrollbar-color: var(--primary) transparent;
+        }
+
+        .control-panel::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .control-panel::-webkit-scrollbar-thumb {
+            background: var(--primary);
+            border-radius: 3px;
+        }
+
+        .glass-card {
+            background: var(--bg-card);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid var(--glass-border);
+            border-radius: 16px;
+            padding: 16px;
+            box-shadow: var(--shadow-glow), 0 8px 32px rgba(0, 0, 0, 0.4);
+        }
+
+        .glass-card.compact {
+            padding: 12px 16px;
+        }
+
+        .header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+
+        .logo {
+            width: 44px;
+            height: 44px;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 22px;
+            box-shadow: 0 4px 15px rgba(99, 102, 241, 0.4);
+        }
+
+        .title-group h1 {
+            font-size: 1.35rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--text-light), var(--accent));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .title-group p {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            font-weight: 300;
+        }
+
+        /* View Toggle */
+        .view-toggle {
+            display: flex;
+            background: var(--glass-bg);
+            border-radius: 10px;
+            padding: 3px;
+            gap: 3px;
+        }
+
+        .toggle-btn {
+            flex: 1;
+            padding: 10px 12px;
+            border: none;
+            background: transparent;
+            color: var(--text-muted);
+            font-family: 'Outfit', sans-serif;
+            font-size: 0.85rem;
+            font-weight: 500;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: var(--transition);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+        }
+
+        .toggle-btn:hover {
+            color: var(--text-light);
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .toggle-btn.active {
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            color: white;
+            box-shadow: 0 4px 15px rgba(99, 102, 241, 0.4);
+        }
+
+        .toggle-btn svg {
+            width: 16px;
+            height: 16px;
+        }
+
+        /* Action Buttons Row */
+        .action-row {
+            display: flex;
+            gap: 8px;
+            margin-top: 10px;
+        }
+
+        .action-btn {
+            flex: 1;
+            padding: 10px;
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            border-radius: 10px;
+            color: var(--text-muted);
+            font-family: 'Outfit', sans-serif;
+            font-size: 0.75rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: var(--transition);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .action-btn:hover {
+            background: rgba(255, 255, 255, 0.08);
+            color: var(--text-light);
+            border-color: var(--primary);
+        }
+
+        .action-btn.active {
+            background: rgba(99, 102, 241, 0.2);
+            border-color: var(--primary);
+            color: var(--primary);
+        }
+
+        .action-btn svg {
+            width: 20px;
+            height: 20px;
+        }
+
+        /* Search Input */
+        .search-container {
+            margin-top: 10px;
+        }
+
+        .search-label {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 6px;
+            display: block;
+        }
+
+        .search-input-group {
+            display: flex;
+            gap: 6px;
+        }
+
+        .search-input {
+            flex: 1;
+            padding: 10px 14px;
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            border-radius: 10px;
+            color: var(--text-light);
+            font-family: 'Outfit', sans-serif;
+            font-size: 0.85rem;
+            transition: var(--transition);
+        }
+
+        .search-input::placeholder {
+            color: var(--text-muted);
+        }
+
+        .search-input:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+        }
+
+        .search-btn {
+            padding: 10px 14px;
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            border: none;
+            border-radius: 10px;
+            color: white;
+            cursor: pointer;
+            transition: var(--transition);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .search-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(99, 102, 241, 0.4);
+        }
+
+        .search-btn svg {
+            width: 18px;
+            height: 18px;
+        }
+
+        /* Info Panel */
+        .info-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .location-card {
+            background: var(--glass-bg);
+            border-radius: 12px;
+            padding: 14px;
+            border-left: 3px solid transparent;
+            transition: var(--transition);
+        }
+
+        .location-card.original {
+            border-left-color: var(--primary);
+        }
+
+        .location-card.antipode {
+            border-left-color: var(--secondary);
+        }
+
+        .location-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 6px;
+        }
+
+        .location-marker {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+        }
+
+        .location-marker.original {
+            background: linear-gradient(135deg, var(--primary), #818cf8);
+        }
+
+        .location-marker.antipode {
+            background: linear-gradient(135deg, var(--secondary), #f472b6);
+        }
+
+        .location-label {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            flex: 1;
+        }
+
+        .country-flag {
+            font-size: 1.4rem;
+            line-height: 1;
+        }
+
+        .location-coords {
+            font-size: 1rem;
+            font-weight: 600;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .location-name {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            margin-top: 4px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .country-name {
+            font-size: 0.75rem;
+            color: var(--accent);
+            margin-top: 2px;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 20px;
+            color: var(--text-muted);
+        }
+
+        .empty-state svg {
+            width: 40px;
+            height: 40px;
+            margin-bottom: 10px;
+            opacity: 0.5;
+        }
+
+        .empty-state p {
+            font-size: 0.85rem;
+        }
+
+        /* Options */
+        .options-row {
+            display: flex;
+            gap: 12px;
+            margin-top: 8px;
+            flex-wrap: wrap;
+        }
+
+        .option-toggle {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .option-toggle input {
+            display: none;
+        }
+
+        .toggle-switch {
+            width: 32px;
+            height: 18px;
+            background: var(--glass-bg);
+            border-radius: 9px;
+            position: relative;
+            transition: var(--transition);
+            border: 1px solid var(--glass-border);
+        }
+
+        .toggle-switch::after {
+            content: '';
+            position: absolute;
+            width: 12px;
+            height: 12px;
+            background: var(--text-muted);
+            border-radius: 50%;
+            top: 2px;
+            left: 2px;
+            transition: var(--transition);
+        }
+
+        .option-toggle input:checked+.toggle-switch {
+            background: var(--primary);
+            border-color: var(--primary);
+        }
+
+        .option-toggle input:checked+.toggle-switch::after {
+            background: white;
+            left: 16px;
+        }
+
+        /* Distance Badge */
+        .distance-badge {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 10px;
+            background: linear-gradient(135deg, rgba(6, 182, 212, 0.2), rgba(99, 102, 241, 0.2));
+            border-radius: 10px;
+            border: 1px solid rgba(6, 182, 212, 0.3);
+        }
+
+        .distance-badge svg {
+            width: 18px;
+            height: 18px;
+            color: var(--accent);
+        }
+
+        .distance-value {
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: var(--accent);
+        }
+
+        /* Fly buttons */
+        .fly-btn {
+            padding: 6px 10px;
+            background: transparent;
+            border: 1px solid var(--glass-border);
+            border-radius: 6px;
+            color: var(--text-muted);
+            font-family: 'Outfit', sans-serif;
+            font-size: 0.7rem;
+            cursor: pointer;
+            transition: var(--transition);
+            margin-top: 6px;
+        }
+
+        .fly-btn:hover {
+            background: var(--glass-bg);
+            color: var(--text-light);
+            border-color: var(--primary);
+        }
+
+        /* History Panel */
+        .history-panel {
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .section-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 10px;
+        }
+
+        .section-title {
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: var(--text-light);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .section-title svg {
+            width: 16px;
+            height: 16px;
+            color: var(--accent);
+        }
+
+        .clear-btn {
+            padding: 4px 8px;
+            background: transparent;
+            border: 1px solid var(--glass-border);
+            border-radius: 4px;
+            color: var(--text-muted);
+            font-family: 'Outfit', sans-serif;
+            font-size: 0.65rem;
+            cursor: pointer;
+            transition: var(--transition);
+        }
+
+        .clear-btn:hover {
+            background: rgba(239, 68, 68, 0.2);
+            border-color: #ef4444;
+            color: #ef4444;
+        }
+
+        .history-list {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .history-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px;
+            background: var(--glass-bg);
+            border-radius: 8px;
+            cursor: pointer;
+            transition: var(--transition);
+            border: 1px solid transparent;
+        }
+
+        .history-item:hover {
+            background: rgba(255, 255, 255, 0.08);
+            border-color: var(--primary);
+        }
+
+        .history-flags {
+            display: flex;
+            gap: 2px;
+            font-size: 1.1rem;
+        }
+
+        .history-arrow {
+            color: var(--primary);
+            font-size: 0.8rem;
+        }
+
+        .history-details {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .history-coords {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .history-names {
+            font-size: 0.75rem;
+            color: var(--text-light);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .history-empty {
+            text-align: center;
+            padding: 16px;
+            color: var(--text-muted);
+            font-size: 0.8rem;
+        }
+
+        /* Animations */
+        @keyframes pulse {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.5;
+            }
+        }
+
+        @keyframes arcFlow {
+            0% {
+                stroke-dashoffset: 1000;
+            }
+
+            100% {
+                stroke-dashoffset: 0;
+            }
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .fade-in {
+            animation: fadeIn 0.4s ease-out forwards;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .control-panel {
+                left: 10px;
+                right: 10px;
+                max-width: none;
+            }
+
+            .map-container.split {
+                flex: 1;
+            }
+
+            #map2-container {
+                display: none !important;
+            }
+        }
+
+        /* Custom MapLibre overrides */
+        .maplibregl-ctrl-attrib {
+            background: rgba(15, 23, 42, 0.7) !important;
+            color: var(--text-muted) !important;
+            backdrop-filter: blur(10px);
+        }
+
+        .maplibregl-ctrl-attrib a {
+            color: var(--accent) !important;
+        }
+
+        /* Toast notification */
+        .toast {
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%) translateY(100px);
+            background: var(--bg-card);
+            backdrop-filter: blur(20px);
+            padding: 12px 24px;
+            border-radius: 12px;
+            border: 1px solid var(--glass-border);
+            color: var(--text-light);
+            font-size: 0.9rem;
+            z-index: 1000;
+            opacity: 0;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .toast.show {
+            transform: translateX(-50%) translateY(0);
+            opacity: 1;
+        }
+
+        .toast svg {
+            width: 20px;
+            height: 20px;
+            color: var(--accent);
+        }
+
+        /* Legend */
+        .legend {
+            position: absolute;
+            bottom: 30px;
+            left: 20px;
+            z-index: 10;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+
+        .legend-color {
+            width: 24px;
+            height: 4px;
+            border-radius: 2px;
+            background: linear-gradient(90deg, var(--primary), var(--secondary));
+        }
+    </style>
+</head>
+
+<body>
+    <div class="app-container">
+        <div class="map-container" id="map1-container">
+            <div id="map"></div>
+            <div class="map-label original" id="map1-label" style="display: none;">📍 Selected Point</div>
+        </div>
+        <div id="map2-container">
+            <div id="map2"></div>
+            <div class="map-label antipode">🎯 Antipode View</div>
+        </div>
+    </div>
+
+    <div class="control-panel">
+        <div class="glass-card">
+            <div class="header">
+                <div class="logo">🌍</div>
+                <div class="title-group">
+                    <h1>Antipode Explorer</h1>
+                    <p>Discover Earth's opposite points</p>
+                </div>
+            </div>
+
+            <div class="view-toggle">
+                <button class="toggle-btn active" id="btn3d" onclick="toggleView('globe')">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10" />
+                        <path
+                            d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+                    </svg>
+                    3D
+                </button>
+                <button class="toggle-btn" id="btn2d" onclick="toggleView('mercator')">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="3" y="3" width="18" height="18" rx="2" />
+                        <path d="M3 9h18M3 15h18M9 3v18M15 3v18" />
+                    </svg>
+                    2D
+                </button>
+            </div>
+
+            <div class="action-row">
+                <button class="action-btn" id="splitBtn" onclick="toggleSplitScreen()">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="3" y="3" width="18" height="18" rx="2" />
+                        <line x1="12" y1="3" x2="12" y2="21" />
+                    </svg>
+                    Split View
+                </button>
+                <button class="action-btn" onclick="exportScreenshot()">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                        <polyline points="7 10 12 15 17 10" />
+                        <line x1="12" y1="15" x2="12" y2="3" />
+                    </svg>
+                    Export
+                </button>
+            </div>
+
+            <div class="search-container">
+                <label class="search-label">Jump to coordinates</label>
+                <div class="search-input-group">
+                    <input type="text" class="search-input" id="coordInput" placeholder="e.g., 40.7128, -74.0060">
+                    <button class="search-btn" onclick="goToCoordinates()">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="11" cy="11" r="8" />
+                            <path d="M21 21l-4.35-4.35" />
+                        </svg>
+                    </button>
+                </div>
+            </div>
+
+            <div class="options-row">
+                <label class="option-toggle">
+                    <input type="checkbox" id="autoRotate" onchange="toggleAutoRotate()">
+                    <span class="toggle-switch"></span>
+                    Auto-rotate
+                </label>
+                <label class="option-toggle">
+                    <input type="checkbox" id="showArc" checked onchange="toggleArc()">
+                    <span class="toggle-switch"></span>
+                    Animated arc
+                </label>
+            </div>
+        </div>
+
+        <div class="glass-card info-panel" id="infoPanel">
+            <div class="empty-state" id="emptyState">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <path d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5" />
+                </svg>
+                <p>Click anywhere on the map to find its antipode</p>
+            </div>
+
+            <div id="locationInfo" style="display: none;">
+                <div class="location-card original fade-in">
+                    <div class="location-header">
+                        <div class="location-marker original">📍</div>
+                        <span class="location-label">Selected Point</span>
+                        <span class="country-flag" id="origFlag"></span>
+                    </div>
+                    <div class="location-coords" id="origCoords">--</div>
+                    <div class="location-name" id="origName">--</div>
+                    <div class="country-name" id="origCountry"></div>
+                    <button class="fly-btn" onclick="flyToOriginal()">Fly here →</button>
+                </div>
+
+                <div class="location-card antipode fade-in" style="animation-delay: 0.1s;">
+                    <div class="location-header">
+                        <div class="location-marker antipode">🎯</div>
+                        <span class="location-label">Antipode</span>
+                        <span class="country-flag" id="antiFlag"></span>
+                    </div>
+                    <div class="location-coords" id="antiCoords">--</div>
+                    <div class="location-name" id="antiName">--</div>
+                    <div class="country-name" id="antiCountry"></div>
+                    <button class="fly-btn" onclick="flyToAntipode()">Fly here →</button>
+                </div>
+
+                <div class="distance-badge fade-in" style="animation-delay: 0.2s;">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10" />
+                        <path d="M12 2v20" />
+                    </svg>
+                    <span class="distance-value">~20,000 km through Earth's core</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- History Panel -->
+        <div class="glass-card history-panel" id="historyPanel">
+            <div class="section-header">
+                <span class="section-title">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10" />
+                        <polyline points="12 6 12 12 16 14" />
+                    </svg>
+                    History
+                </span>
+                <button class="clear-btn" onclick="clearHistory()">Clear</button>
+            </div>
+            <div class="history-list" id="historyList">
+                <div class="history-empty">No locations explored yet</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="legend glass-card compact" style="position: absolute; bottom: 30px; left: 20px; z-index: 10;">
+        <div class="legend-item">
+            <div class="legend-color"></div>
+            <span>Antipodal arc</span>
+        </div>
+    </div>
+
+    <!-- Toast notification -->
+    <div class="toast" id="toast" data-html2canvas-ignore="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+            <polyline points="22 4 12 14.01 9 11.01" />
+        </svg>
+        <span id="toastMessage">Screenshot saved!</span>
+    </div>
+
+    <script>
+        // Country code to flag emoji mapping
+        function countryCodeToFlag(countryCode) {
+            if (!countryCode || countryCode.length !== 2) return '🌊';
+            const codePoints = countryCode
+                .toUpperCase()
+                .split('')
+                .map(char => 127397 + char.charCodeAt(0));
+            return String.fromCodePoint(...codePoints);
+        }
+
+        // Map style configuration
+        const mapStyle = {
+            version: 8,
+            sources: {
+                'raster-tiles': {
+                    type: 'raster',
+                    tiles: [
+                        'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png',
+                        'https://b.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png',
+                        'https://c.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png'
+                    ],
+                    tileSize: 256,
+                    attribution: '&copy; OpenStreetMap &copy; CARTO'
+                }
+            },
+            layers: [{
+                id: 'background',
+                type: 'background',
+                paint: { 'background-color': '#0f172a' }
+            }, {
+                id: 'raster-layer',
+                type: 'raster',
+                source: 'raster-tiles',
+                minzoom: 0,
+                maxzoom: 19
+            }],
+            glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf'
+        };
+
+        const emptyArcData = { type: 'FeatureCollection', features: [] };
+
+        // Initialize main map
+        const map = new maplibregl.Map({
+            container: 'map',
+            style: mapStyle,
+            center: [0, 20],
+            zoom: 1.5,
+            projection: 'globe',
+            maxPitch: 85,
+            canvasContextAttributes: {
+                preserveDrawingBuffer: true
+            }
+        });
+
+        // Initialize second map for split view
+        let map2 = null;
+        let splitScreenActive = false;
+
+        function initMap2() {
+            if (map2) return;
+            map2 = new maplibregl.Map({
+                container: 'map2',
+                style: mapStyle,
+                center: [0, 20],
+                zoom: 4,
+                projection: 'globe',
+                maxPitch: 85,
+                canvasContextAttributes: {
+                    preserveDrawingBuffer: true
+                }
+            });
+
+            map2.on('load', () => {
+                map2.setSky({
+                    'sky-color': '#0f172a',
+                    'sky-horizon-blend': 0.5,
+                    'horizon-color': '#1e3a5f',
+                    'horizon-fog-blend': 0.8,
+                    'fog-color': '#0f172a',
+                    'fog-ground-blend': 0.9
+                });
+            });
+
+            map2.addControl(new maplibregl.NavigationControl(), 'bottom-right');
+        }
+
+        // Arc animation variables
+        let arcAnimationFrame = null;
+        let arcOffset = 0;
+
+        // Add atmosphere and arc on load
+        map.on('load', () => {
+            map.setSky({
+                'sky-color': '#0f172a',
+                'sky-horizon-blend': 0.5,
+                'horizon-color': '#1e3a5f',
+                'horizon-fog-blend': 0.8,
+                'fog-color': '#0f172a',
+                'fog-ground-blend': 0.9
+            });
+
+            // Arc source
+            map.addSource('arc', {
+                type: 'geojson',
+                data: { type: 'FeatureCollection', features: [] }
+            });
+
+            // Glow layer
+            map.addLayer({
+                id: 'arc-glow',
+                type: 'line',
+                source: 'arc',
+                paint: {
+                    'line-color': '#ec4899',
+                    'line-width': 10,
+                    'line-opacity': 0.3,
+                    'line-blur': 4
+                }
+            });
+
+            // Main arc layer with dash animation
+            map.addLayer({
+                id: 'arc-layer',
+                type: 'line',
+                source: 'arc',
+                paint: {
+                    'line-color': '#6366f1',
+                    'line-width': 3,
+                    'line-opacity': 0.9
+                }
+            });
+
+            // Animated dash layer
+            map.addLayer({
+                id: 'arc-dash',
+                type: 'line',
+                source: 'arc',
+                paint: {
+                    'line-color': '#ffffff',
+                    'line-width': 2,
+                    'line-dasharray': [2, 4],
+                    'line-opacity': 0.8
+                }
+            });
+        });
+
+        // Custom markers
+        function createMarkerElement(type) {
+            const el = document.createElement('div');
+            el.style.cssText = `
+                width: 20px;
+                height: 20px;
+                border-radius: 50%;
+                border: 3px solid white;
+                box-shadow: 0 2px 10px rgba(0,0,0,0.3), 0 0 20px ${type === 'original' ? 'rgba(99, 102, 241, 0.5)' : 'rgba(236, 72, 153, 0.5)'};
+                background: ${type === 'original' ? 'linear-gradient(135deg, #6366f1, #818cf8)' : 'linear-gradient(135deg, #ec4899, #f472b6)'};
+                cursor: pointer;
+                transition: transform 0.2s ease;
+            `;
+            el.addEventListener('mouseenter', () => el.style.transform = 'scale(1.3)');
+            el.addEventListener('mouseleave', () => el.style.transform = 'scale(1)');
+            return el;
+        }
+
+        let markerA = new maplibregl.Marker({ element: createMarkerElement('original') });
+        let markerB = new maplibregl.Marker({ element: createMarkerElement('antipode') });
+        let markerB2 = null; // For split view
+        let currentOriginal = null;
+        let currentAntipode = null;
+        let rotationAnimation = null;
+
+        // History storage
+        let history = loadHistory();
+        let activeSelectionRequest = 0;
+        let toastTimeout = null;
+        renderHistory();
+
+        // Calculate antipode
+        function getAntipode(lng, lat) {
+            const newLat = -lat;
+            const newLng = lng > 0 ? lng - 180 : lng + 180;
+            return [newLng, newLat];
+        }
+
+        // Format coordinates
+        function formatCoords(lng, lat) {
+            const latDir = lat >= 0 ? 'N' : 'S';
+            const lngDir = lng >= 0 ? 'E' : 'W';
+            return `${Math.abs(lat).toFixed(4)}° ${latDir}, ${Math.abs(lng).toFixed(4)}° ${lngDir}`;
+        }
+
+        function formatCoordsShort(lng, lat) {
+            const latDir = lat >= 0 ? 'N' : 'S';
+            const lngDir = lng >= 0 ? 'E' : 'W';
+            return `${Math.abs(lat).toFixed(1)}°${latDir}, ${Math.abs(lng).toFixed(1)}°${lngDir}`;
+        }
+
+        function clamp(value, min, max) {
+            return Math.min(max, Math.max(min, value));
+        }
+
+        function toRadians(degrees) {
+            return degrees * Math.PI / 180;
+        }
+
+        function toDegrees(radians) {
+            return radians * 180 / Math.PI;
+        }
+
+        function lngLatToVector(lng, lat) {
+            const lngRad = toRadians(lng);
+            const latRad = toRadians(lat);
+            const cosLat = Math.cos(latRad);
+            return [
+                cosLat * Math.cos(lngRad),
+                cosLat * Math.sin(lngRad),
+                Math.sin(latRad)
+            ];
+        }
+
+        function dotProduct(a, b) {
+            return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+        }
+
+        function crossProduct(a, b) {
+            return [
+                a[1] * b[2] - a[2] * b[1],
+                a[2] * b[0] - a[0] * b[2],
+                a[0] * b[1] - a[1] * b[0]
+            ];
+        }
+
+        function scaleVector(vector, scalar) {
+            return vector.map(component => component * scalar);
+        }
+
+        function addVectors(a, b) {
+            return a.map((component, index) => component + b[index]);
+        }
+
+        function normalizeVector(vector) {
+            const magnitude = Math.hypot(...vector);
+            if (!magnitude) {
+                return [0, 0, 0];
+            }
+            return vector.map(component => component / magnitude);
+        }
+
+        function vectorToLngLat(vector) {
+            const normalized = normalizeVector(vector);
+            return [
+                toDegrees(Math.atan2(normalized[1], normalized[0])),
+                toDegrees(Math.atan2(normalized[2], Math.hypot(normalized[0], normalized[1])))
+            ];
+        }
+
+        function pickRotationAxis(vector) {
+            const references = [
+                [0, 0, 1],
+                [0, 1, 0],
+                [1, 0, 0]
+            ];
+
+            for (const reference of references) {
+                const axis = crossProduct(vector, reference);
+                if (Math.hypot(...axis) > 1e-6) {
+                    return normalizeVector(axis);
+                }
+            }
+
+            return [1, 0, 0];
+        }
+
+        function rotateAroundAxis(vector, axis, angle) {
+            const cosAngle = Math.cos(angle);
+            const sinAngle = Math.sin(angle);
+            const cross = crossProduct(axis, vector);
+            const dot = dotProduct(axis, vector);
+
+            return [
+                vector[0] * cosAngle + cross[0] * sinAngle + axis[0] * dot * (1 - cosAngle),
+                vector[1] * cosAngle + cross[1] * sinAngle + axis[1] * dot * (1 - cosAngle),
+                vector[2] * cosAngle + cross[2] * sinAngle + axis[2] * dot * (1 - cosAngle)
+            ];
+        }
+
+        function interpolateArcPoint(startVector, endVector, fraction) {
+            const similarity = clamp(dotProduct(startVector, endVector), -1, 1);
+
+            if (similarity > 0.9995) {
+                return normalizeVector(addVectors(
+                    scaleVector(startVector, 1 - fraction),
+                    scaleVector(endVector, fraction)
+                ));
+            }
+
+            if (similarity < -0.9995) {
+                return rotateAroundAxis(startVector, pickRotationAxis(startVector), Math.PI * fraction);
+            }
+
+            const omega = Math.acos(similarity);
+            const sinOmega = Math.sin(omega);
+            const startScale = Math.sin((1 - fraction) * omega) / sinOmega;
+            const endScale = Math.sin(fraction * omega) / sinOmega;
+
+            return addVectors(
+                scaleVector(startVector, startScale),
+                scaleVector(endVector, endScale)
+            );
+        }
+
+        // Generate great circle arc
+        function generateArc(start, end, numPoints = 100) {
+            const startVector = lngLatToVector(start[0], start[1]);
+            const endVector = lngLatToVector(end[0], end[1]);
+            const points = [];
+
+            for (let i = 0; i <= numPoints; i++) {
+                const fraction = i / numPoints;
+                points.push(vectorToLngLat(interpolateArcPoint(startVector, endVector, fraction)));
+            }
+
+            return points;
+        }
+
+        // Animate arc
+        function animateArc() {
+            if (!document.getElementById('showArc').checked || !map.getLayer('arc-glow') || !map.getLayer('arc-dash')) {
+                arcAnimationFrame = null;
+                return;
+            }
+
+            arcOffset += 0.04;
+            const glowPulse = 0.28 + ((Math.sin(arcOffset) + 1) * 0.14);
+            const dashPulse = 0.45 + ((Math.sin(arcOffset * 1.6) + 1) * 0.12);
+
+            map.setPaintProperty('arc-glow', 'line-opacity', glowPulse);
+            map.setPaintProperty('arc-glow', 'line-width', 8 + Math.sin(arcOffset) * 2);
+            map.setPaintProperty('arc-dash', 'line-opacity', dashPulse);
+            arcAnimationFrame = requestAnimationFrame(animateArc);
+        }
+
+        // Update arc
+        function updateArc(start, end) {
+            if (arcAnimationFrame) {
+                cancelAnimationFrame(arcAnimationFrame);
+                arcAnimationFrame = null;
+            }
+
+            const arcSource = map.getSource('arc');
+            if (!arcSource) return;
+
+            if (!document.getElementById('showArc').checked) {
+                arcSource.setData(emptyArcData);
+                return;
+            }
+
+            const arcPoints = generateArc(start, end);
+            arcSource.setData({
+                type: 'FeatureCollection',
+                features: [{
+                    type: 'Feature',
+                    geometry: { type: 'LineString', coordinates: arcPoints }
+                }]
+            });
+
+            map.setPaintProperty('arc-glow', 'line-width', 10);
+            map.setPaintProperty('arc-glow', 'line-opacity', 0.3);
+            map.setPaintProperty('arc-dash', 'line-opacity', 0.8);
+
+            animateArc();
+        }
+
+        // Reverse geocode with country info
+        async function getLocationInfo(lng, lat) {
+            try {
+                const response = await fetch(
+                    `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=10&addressdetails=1`
+                );
+                const data = await response.json();
+
+                let name = 'Ocean / Unknown';
+                let country = '';
+                let countryCode = '';
+
+                if (data.address) {
+                    const parts = [];
+                    if (data.address.city) parts.push(data.address.city);
+                    else if (data.address.town) parts.push(data.address.town);
+                    else if (data.address.village) parts.push(data.address.village);
+                    else if (data.address.state) parts.push(data.address.state);
+
+                    if (data.address.country) {
+                        country = data.address.country;
+                        countryCode = data.address.country_code?.toUpperCase() || '';
+                    }
+
+                    name = parts.length > 0 ? parts.join(', ') : (country || 'Unknown location');
+                }
+
+                return { name, country, countryCode, flag: countryCodeToFlag(countryCode) };
+            } catch {
+                return { name: 'Location unavailable', country: '', countryCode: '', flag: '🌊' };
+            }
+        }
+
+        function isValidCoordinatePair(value) {
+            return Array.isArray(value) &&
+                value.length === 2 &&
+                value.every(coordinate => typeof coordinate === 'number' && Number.isFinite(coordinate));
+        }
+
+        function loadHistory() {
+            try {
+                const storedHistory = JSON.parse(localStorage.getItem('antipodeHistory') || '[]');
+                if (!Array.isArray(storedHistory)) {
+                    return [];
+                }
+
+                return storedHistory.filter(entry =>
+                    entry &&
+                    typeof entry.id === 'number' &&
+                    entry.original &&
+                    entry.antipode &&
+                    isValidCoordinatePair(entry.original.coords) &&
+                    isValidCoordinatePair(entry.antipode.coords)
+                );
+            } catch {
+                localStorage.removeItem('antipodeHistory');
+                return [];
+            }
+        }
+
+        function persistHistory() {
+            localStorage.setItem('antipodeHistory', JSON.stringify(history));
+        }
+
+        function showLocationPanel() {
+            document.getElementById('emptyState').style.display = 'none';
+            document.getElementById('locationInfo').style.display = 'block';
+        }
+
+        function setLocationLoading(coords, antiCoords) {
+            showLocationPanel();
+            document.getElementById('origCoords').textContent = formatCoords(coords[0], coords[1]);
+            document.getElementById('antiCoords').textContent = formatCoords(antiCoords[0], antiCoords[1]);
+            document.getElementById('origName').textContent = 'Loading...';
+            document.getElementById('antiName').textContent = 'Loading...';
+            document.getElementById('origFlag').textContent = '';
+            document.getElementById('antiFlag').textContent = '';
+            document.getElementById('origCountry').textContent = '';
+            document.getElementById('antiCountry').textContent = '';
+        }
+
+        function updateLocationDisplay(coords, antiCoords, origInfo, antiInfo) {
+            showLocationPanel();
+            document.getElementById('origCoords').textContent = formatCoords(coords[0], coords[1]);
+            document.getElementById('antiCoords').textContent = formatCoords(antiCoords[0], antiCoords[1]);
+            document.getElementById('origName').textContent = origInfo.name || 'Unknown location';
+            document.getElementById('antiName').textContent = antiInfo.name || 'Unknown location';
+            document.getElementById('origFlag').textContent = origInfo.flag || '🌊';
+            document.getElementById('antiFlag').textContent = antiInfo.flag || '🌊';
+            document.getElementById('origCountry').textContent = origInfo.country || '';
+            document.getElementById('antiCountry').textContent = antiInfo.country || '';
+        }
+
+        function updateSplitMarker(duration = 1500) {
+            if (!splitScreenActive || !map2 || !currentAntipode) {
+                return;
+            }
+
+            map2.flyTo({ center: currentAntipode, zoom: 4, duration });
+            if (!markerB2) {
+                markerB2 = new maplibregl.Marker({ element: createMarkerElement('antipode') });
+            }
+            markerB2.setLngLat(currentAntipode).addTo(map2);
+        }
+
+        async function selectPoint(coords, { shouldFly = false } = {}) {
+            const antiCoords = getAntipode(coords[0], coords[1]);
+            const selectionRequestId = ++activeSelectionRequest;
+
+            currentOriginal = coords;
+            currentAntipode = antiCoords;
+
+            markerA.setLngLat(coords).addTo(map);
+            markerB.setLngLat(antiCoords).addTo(map);
+            updateArc(coords, antiCoords);
+            updateSplitMarker(1000);
+            setLocationLoading(coords, antiCoords);
+
+            if (shouldFly) {
+                map.flyTo({ center: coords, zoom: 4, duration: 1500 });
+            }
+
+            const [origInfo, antiInfo] = await Promise.all([
+                getLocationInfo(coords[0], coords[1]),
+                getLocationInfo(antiCoords[0], antiCoords[1])
+            ]);
+
+            if (selectionRequestId !== activeSelectionRequest) {
+                return;
+            }
+
+            updateLocationDisplay(coords, antiCoords, origInfo, antiInfo);
+            addToHistory(coords, antiCoords, origInfo, antiInfo);
+        }
+
+        // Add to history
+        function addToHistory(origCoords, antiCoords, origInfo, antiInfo) {
+            const entry = {
+                id: Date.now(),
+                original: { coords: origCoords, ...origInfo },
+                antipode: { coords: antiCoords, ...antiInfo },
+                timestamp: new Date().toISOString()
+            };
+
+            // Remove duplicates
+            history = history.filter(h =>
+                !(Math.abs(h.original.coords[0] - origCoords[0]) < 0.01 &&
+                    Math.abs(h.original.coords[1] - origCoords[1]) < 0.01)
+            );
+
+            history.unshift(entry);
+            history = history.slice(0, 10); // Keep last 10
+            persistHistory();
+            renderHistory();
+        }
+
+        function createHistoryItem(entry) {
+            const item = document.createElement('button');
+            item.type = 'button';
+            item.className = 'history-item';
+            item.addEventListener('click', () => loadHistoryItem(entry.id));
+
+            const flags = document.createElement('div');
+            flags.className = 'history-flags';
+
+            const originalFlag = document.createElement('span');
+            originalFlag.textContent = entry.original.flag || '📍';
+
+            const arrow = document.createElement('span');
+            arrow.className = 'history-arrow';
+            arrow.textContent = '⇄';
+
+            const antipodeFlag = document.createElement('span');
+            antipodeFlag.textContent = entry.antipode.flag || '🎯';
+
+            flags.append(originalFlag, arrow, antipodeFlag);
+
+            const details = document.createElement('div');
+            details.className = 'history-details';
+
+            const names = document.createElement('div');
+            names.className = 'history-names';
+            names.textContent = `${entry.original.name || 'Unknown'} → ${entry.antipode.name || 'Unknown'}`;
+
+            const coords = document.createElement('div');
+            coords.className = 'history-coords';
+            coords.textContent = formatCoordsShort(entry.original.coords[0], entry.original.coords[1]);
+
+            details.append(names, coords);
+            item.append(flags, details);
+            return item;
+        }
+
+        function renderHistory() {
+            const list = document.getElementById('historyList');
+            list.replaceChildren();
+
+            if (history.length === 0) {
+                const emptyState = document.createElement('div');
+                emptyState.className = 'history-empty';
+                emptyState.textContent = 'No locations explored yet';
+                list.appendChild(emptyState);
+                return;
+            }
+
+            history.forEach(entry => list.appendChild(createHistoryItem(entry)));
+        }
+
+        function loadHistoryItem(id) {
+            const item = history.find(h => h.id === id);
+            if (!item) return;
+
+            activeSelectionRequest += 1;
+
+            currentOriginal = item.original.coords;
+            currentAntipode = item.antipode.coords;
+
+            markerA.setLngLat(currentOriginal).addTo(map);
+            markerB.setLngLat(currentAntipode).addTo(map);
+            updateArc(currentOriginal, currentAntipode);
+
+            updateLocationDisplay(currentOriginal, currentAntipode, item.original, item.antipode);
+            updateSplitMarker();
+
+            map.flyTo({ center: currentOriginal, zoom: 3, duration: 1500 });
+        }
+
+        function clearHistory() {
+            history = [];
+            localStorage.removeItem('antipodeHistory');
+            renderHistory();
+        }
+
+        // Click handler
+        map.on('click', async (e) => {
+            await selectPoint([e.lngLat.lng, e.lngLat.lat]);
+        });
+
+        // Toggle view
+        function toggleView(type) {
+            map.setProjection(type);
+            if (map2) map2.setProjection(type);
+
+            document.getElementById('btn3d').classList.toggle('active', type === 'globe');
+            document.getElementById('btn2d').classList.toggle('active', type === 'mercator');
+
+            if (type === 'globe') {
+                map.easeTo({ zoom: Math.min(map.getZoom(), 3), duration: 500 });
+            }
+        }
+
+        // Split screen toggle
+        function toggleSplitScreen() {
+            if (!splitScreenActive && window.matchMedia('(max-width: 768px)').matches) {
+                showToast('Split view is available on wider screens');
+                return;
+            }
+
+            splitScreenActive = !splitScreenActive;
+            const container = document.getElementById('map2-container');
+            const mapContainer = document.getElementById('map1-container');
+            const label = document.getElementById('map1-label');
+            const btn = document.getElementById('splitBtn');
+
+            container.classList.toggle('active', splitScreenActive);
+            mapContainer.classList.toggle('split', splitScreenActive);
+            label.style.display = splitScreenActive ? 'block' : 'none';
+            btn.classList.toggle('active', splitScreenActive);
+
+            if (splitScreenActive) {
+                initMap2();
+                setTimeout(() => {
+                    map.resize();
+                    map2?.resize();
+
+                    updateSplitMarker(1000);
+                }, 100);
+            } else {
+                setTimeout(() => map.resize(), 100);
+            }
+        }
+
+        // Fly functions
+        function flyToOriginal() {
+            if (currentOriginal) {
+                map.flyTo({ center: currentOriginal, zoom: 5, duration: 2000 });
+            }
+        }
+
+        function flyToAntipode() {
+            if (currentAntipode) {
+                if (splitScreenActive && map2) {
+                    map2.flyTo({ center: currentAntipode, zoom: 5, duration: 2000 });
+                } else {
+                    map.flyTo({ center: currentAntipode, zoom: 5, duration: 2000 });
+                }
+            }
+        }
+
+        // Coordinates input
+        function goToCoordinates() {
+            const input = document.getElementById('coordInput').value.trim();
+            const parts = input.split(/[,\s]+/).filter(p => p);
+
+            if (parts.length >= 2) {
+                const lat = parseFloat(parts[0]);
+                const lng = parseFloat(parts[1]);
+
+                if (!isNaN(lat) && !isNaN(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
+                    selectPoint([lng, lat], { shouldFly: true });
+                } else {
+                    showToast('Invalid coordinates. Lat: -90 to 90, Lng: -180 to 180');
+                }
+            } else {
+                showToast('Enter: latitude, longitude (e.g., 40.7128, -74.0060)');
+            }
+        }
+
+        document.getElementById('coordInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') goToCoordinates();
+        });
+
+        // Auto-rotate
+        function toggleAutoRotate() {
+            const isOn = document.getElementById('autoRotate').checked;
+
+            if (isOn) {
+                function rotate() {
+                    if (!document.getElementById('autoRotate').checked) return;
+                    map.easeTo({ bearing: map.getBearing() + 0.2, duration: 0, easing: (t) => t });
+                    rotationAnimation = requestAnimationFrame(rotate);
+                }
+                rotate();
+            } else if (rotationAnimation) {
+                cancelAnimationFrame(rotationAnimation);
+            }
+        }
+
+        // Toggle arc
+        function toggleArc() {
+            if (currentOriginal && currentAntipode) {
+                updateArc(currentOriginal, currentAntipode);
+            }
+        }
+
+        // Export screenshot
+        async function exportScreenshot() {
+            showToast('Preparing screenshot...');
+
+            try {
+                map.triggerRepaint();
+                map2?.triggerRepaint();
+                await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+
+                const canvas = await html2canvas(document.body, {
+                    useCORS: true,
+                    allowTaint: false,
+                    backgroundColor: '#0f172a',
+                    scale: 2,
+                    windowWidth: window.innerWidth,
+                    windowHeight: window.innerHeight,
+                    ignoreElements: element => element.hasAttribute('data-html2canvas-ignore')
+                });
+
+                const link = document.createElement('a');
+                link.download = `antipode-explorer-${Date.now()}.png`;
+                link.href = canvas.toDataURL('image/png');
+                link.click();
+
+                showToast('Screenshot saved!');
+            } catch (err) {
+                console.error('Screenshot failed:', err);
+                showToast('Screenshot failed. Try again.');
+            }
+        }
+
+        // Toast notification
+        function showToast(message) {
+            const toast = document.getElementById('toast');
+            document.getElementById('toastMessage').textContent = message;
+            toast.classList.add('show');
+            if (toastTimeout) {
+                clearTimeout(toastTimeout);
+            }
+            toastTimeout = setTimeout(() => toast.classList.remove('show'), 3000);
+        }
+
+        // Navigation controls
+        map.addControl(new maplibregl.NavigationControl(), 'bottom-right');
+    </script>
+</body>
+
+</html>
